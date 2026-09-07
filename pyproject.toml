@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mini-codex"
 version = "0.1.0"
-description = "A lightweight AI pair programming agent in Python (inspired by @you-want/mini-cc)"
+description = "An independently developed lightweight AI pair programming agent in Python CLI"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
