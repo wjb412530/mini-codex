@@ -20,7 +20,7 @@
 
 ## 核心特性
 
-- **多模型 Provider**：统一的 `LLMProvider` 抽象层，一套代码同时支持 OpenAI 兼容接口（Qwen / DeepSeek / Kimi / GLM 等）与 Anthropic 官方接口（Claude）。
+- **多模型 Provider**：统一的 `LLMProvider` 抽象层，一套代码同时支持 OpenAI 兼容接口（Qwen / DeepSeek / Kimi / GLM 等）与 Anthropic 官方接口（Claude，可选安装）。
 - **Agent 循环闭环**：自动的 ReAct 风格循环，模型可自主连续调用多个工具直至给出最终答案（内置 30 轮上限防止死循环）。
 - **Tool Use（工具调用）**：内置 `Bash`（执行命令）、`FileRead`（读文件）、`FileWrite`（写文件）、`AddMemory`（写入持久记忆）、`GitStatus`（查询 git 状态）、`AgentTool`（派生子代理）、`MCPTool`（远程插件）。
 - **三层安全防线**：破坏性命令拦截（`rm -rf /`、`mkfs`、`dd` 等）、子命令注入拦截（`$(...)`、反引号）、白名单沙盒判定。
@@ -65,41 +65,80 @@
 
 ## 安装
 
-### 方式一：源码构建（推荐）
+### 方式一：pipx 安装（推荐）
+
+pipx 会为 CLI 工具创建独立隔离环境，并把命令装到全局，一次安装随处可跑。
+
+```bash
+pip install pipx
+pipx ensurepath
+pipx install .
+mini-codex
+```
+
+> 更新代码后重新安装：`pipx install --force .`（或 `pipx reinstall mini-codex`）。
+> 运行时读取 `~/.mini-codex/config.json` 与系统环境变量（`OPENAI_API_KEY`），与启动目录无关。
+
+### 方式二：源码构建（开发用）
 
 ```bash
 git clone https://github.com/wjb412530/mini-codex.git
 cd mini-codex
 python -m venv venv
-source venv/bin/activate         # Windows: venv\Scripts\activate
-pip install -e .
 
+# Windows（PowerShell / cmd）
+venv\Scripts\activate
+# macOS / Linux
+source venv/bin/activate
+
+pip install -e .
 mini-codex
 ```
 
-### 方式二：直接运行
+### 方式三：免激活直接运行
 
-```bash
+Windows 下无需 `activate`，直接用 venv 内的入口启动：
+
+```cmd
 cd mini-codex
-pip install -e .
-
-python -m mini_codex
+venv\Scripts\mini-codex.exe
 ```
 
-> 要求 Python >= 3.9。
+以模块方式运行（注意主包没有 `__main__.py`，请用 `mini_codex.main`）：
+
+```cmd
+venv\Scripts\python.exe -m mini_codex.main
+```
+
+> 要求 Python >= 3.9。`pip install -e .` 会安装 OpenAI 兼容协议所需依赖（不含 `anthropic`）。如需 Claude，请额外执行 `pip install -e ".[anthropic]"`；如需运行测试，请执行 `pip install -e ".[dev]"`。
+
+## 启动
+
+> ⚠️ 目录名与命令都叫 **`mini-codex`**（带连字符）。通过 pipx / 源码构建启动前，请确保已完成安装；使用源码方式时需先 `cd` 到项目目录，否则会报「系统找不到指定的路径」或「'mini-codex' 不是内部或外部命令」。
+
+```cmd
+cd C:\Users\86452\Desktop\mini-codex
+venv\Scripts\activate
+mini-codex
+```
+
+首次启动会自动读取 `.env` 或 `~/.mini-codex/config.json`；若未检测到 API Key 则进入交互式配置向导。
 
 ## 配置
 
-在工作目录或用户主目录下创建 `.env`（或使用 `~/.mini-codex/config.json`）：
+在工作目录或用户主目录下创建 `.env`（或用 `~/.mini-codex/config.json`）：
 
 ```env
-# OpenAI 兼容（Qwen / DeepSeek 等）
+# OpenAI 兼容（Qwen / DeepSeek 等，国内大模型推荐此方式）
 PROVIDER=openai
 OPENAI_API_KEY=sk-xxx
-OPENAI_BASE_URL=https://api.deepseek.com/v1
-MODEL_NAME=deepseek-coder
+OPENAI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1   # 通义千问 Qwen
+MODEL_NAME=qwen-plus
 
-# 或 Anthropic
+# 是否展示思维链（思考过程）。设为 false 可关闭思考过程、输出更干净
+SHOW_THINKING=true
+
+# 或 Anthropic（需先 pip install -e ".[anthropic]"）
 # PROVIDER=anthropic
 # ANTHROPIC_API_KEY=sk-ant-xxx
 # MODEL_NAME=claude-sonnet-4-20250514
@@ -108,10 +147,6 @@ MODEL_NAME=deepseek-coder
 首次运行未配置 Key 时会进入交互式配置向导，引导你完成设置。
 
 ## 使用
-
-```text
-mini-codex --provider openai --model gpt-4o --verbose
-```
 
 进入 `>` 提示符后，直接用自然语言下指令即可，例如：
 
@@ -161,7 +196,8 @@ export MINI_CODEX_MCP_SERVERS='[{"name":"fetch","description":"发起网络请�
 
 ```bash
 cd mini-codex
-pytest
+pip install -e ".[dev]"   # 首次需要：安装测试依赖（pytest / pytest-asyncio）
+pytest                    # 12 个用例，全异步（asyncio_mode=auto）
 ```
 
 ## 项目结构
@@ -173,7 +209,7 @@ mini-codex/
 │   ├── cli/                     # 命令行入口与主循环
 │   ├── config/                  # 配置管理（环境变量 > config.json > 默认值）
 │   ├── core/                    # Agent 循环、记忆系统
-│   │   └── providers/           # OpenAI / Anthropic Provider
+│   │   └── providers/           # OpenAI（必装）/ Anthropic（可选）Provider
 │   ├── tools/                   # 工具系统
 │   │   └── security/            # 三层安全检查
 │   ├── utils/                   # 终端输出
@@ -185,7 +221,7 @@ mini-codex/
 
 - `asyncio` — 全异步非阻塞 I/O
 - `Pydantic v2` — 工具参数校验与 JSON Schema 生成
-- `openai` / `anthropic` SDK — 多模型接入
+- `openai` SDK — OpenAI 兼容协议（默认）；`anthropic` SDK — 可选
 - `rich` + `prompt_toolkit` — 终端 UI
 
 ## 开源协议

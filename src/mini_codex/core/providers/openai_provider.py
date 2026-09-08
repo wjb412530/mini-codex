@@ -25,16 +25,18 @@ class OpenAIProvider(LLMProvider):
     - 工具调用（Function Calling）
     """
 
-    def __init__(self, api_key: str, base_url: str = None, model: str = 'gpt-4o'):
+    def __init__(self, api_key: str, base_url: str = None, model: str = 'gpt-4o', show_thinking: bool = True):
         """
         初始化 OpenAI Provider。
 
         :param api_key: API 密钥
         :param base_url: API 基础 URL（用于兼容接口）
         :param model: 模型名称
+        :param show_thinking: 是否请求并展示思维链（Qwen 的 reasoning_content）
         """
         self.client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         self.model = model
+        self.show_thinking = show_thinking
         self.messages: List[Dict[str, Any]] = []
 
         self.system_prompt = (
@@ -67,8 +69,10 @@ class OpenAIProvider(LLMProvider):
             "messages": self.messages,
             "temperature": 0.2,
             "stream": True,
-            "extra_body": {"enable_thinking": True}  # 兼容 Qwen 等支持 reasoning_content 的模型
         }
+        # 仅在需要展示思维链时，才向 API 传递 enable_thinking（Qwen 专有参数）
+        if self.show_thinking:
+            request_options["extra_body"] = {"enable_thinking": True}
 
         if tools:
             request_options["tools"] = tools
@@ -88,20 +92,23 @@ class OpenAIProvider(LLMProvider):
 
             delta = chunk.choices[0].delta
 
-            # 1. 处理 Qwen 的思维链输出
-            reasoning = getattr(delta, 'reasoning_content', None)
-            if reasoning:
-                if not is_thinking_started:
-                    on_text_response('\n' + '=' * 20 + ' 思考过程 ' + '=' * 20 + '\n', True)
-                    is_thinking_started = True
-                full_reasoning += reasoning
-                on_text_response(reasoning, True)
+            # 1. 处理 Qwen 的思维链输出（仅在 show_thinking 开启时展示）
+            if self.show_thinking:
+                reasoning = getattr(delta, 'reasoning_content', None)
+                if reasoning:
+                    if not is_thinking_started:
+                        on_text_response('\n' + '=' * 20 + ' 思考过程 ' + '=' * 20 + '\n', True)
+                        is_thinking_started = True
+                    full_reasoning += reasoning
+                    on_text_response(reasoning, True)
 
-            # 思维链结束，正式内容开始
-            if is_thinking_started and getattr(delta, 'content', None) is not None:
-                on_text_response('\n' + '=' * 20 + ' 完整回复 ' + '=' * 20 + '\n', False)
-                is_thinking_started = False
-                is_content_started = True
+                # 思维链结束，正式内容开始
+                # 注意：用真值判断 delta.content，而非 is not None。DashScope 在思维阶段的
+                # delta.content 是空字符串 ""，若用 is not None 会被误判为正文开始，导致分隔线刷屏。
+                if is_thinking_started and delta.content:
+                    on_text_response('\n' + '=' * 20 + ' 完整回复 ' + '=' * 20 + '\n', False)
+                    is_thinking_started = False
+                    is_content_started = True
 
             # 2. 处理普通的文本回复
             if delta.content:

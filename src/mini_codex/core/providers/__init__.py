@@ -3,12 +3,14 @@ LLM 提供商模块 (providers)
 ========================
 
 提供统一的 LLM 接口，支持多个模型提供商。
+
+- OpenAIProvider：OpenAI 兼容协议（默认，支持 Qwen / DeepSeek / Kimi 等国内大模型）
+- AnthropicProvider：Claude 官方协议（可选，惰性导入，需额外安装 anthropic）
 """
 
 from typing import Optional
 from .base import LLMProvider
 from .openai_provider import OpenAIProvider
-from .anthropic_provider import AnthropicProvider
 
 
 def create_provider(
@@ -24,12 +26,14 @@ def create_provider(
 
     :param provider_type: 提供商类型 ("openai" 或 "anthropic")
     :param api_key: API 密钥
-    :param base_url: API 基础 URL（仅 OpenAI 兼容接口）
+    :param base_url: API 基础 URL（OpenAI 兼容接口）
     :param model: 模型名称
     :return: LLMProvider 实例
     """
     if provider_type == "anthropic":
+        # 惰性导入：仅在真正使用 Claude 时才要求 anthropic 依赖
         from mini_codex.config import get_config_value
+        from .anthropic_provider import AnthropicProvider
         key = api_key or get_config_value("ANTHROPIC_API_KEY")
         if not key:
             raise ValueError("ANTHROPIC_API_KEY 未配置")
@@ -42,12 +46,12 @@ def create_provider(
             raise ValueError("OPENAI_API_KEY 未配置")
         url = base_url or get_config_value("OPENAI_BASE_URL", "https://api.openai.com/v1")
         m = model or get_config_value("MODEL_NAME", "gpt-4o")
-        return OpenAIProvider(api_key=key, base_url=url, model=m)
+        show_thinking = get_config_value("SHOW_THINKING", "true").strip().lower() not in ("false", "0", "no", "off")
+        return OpenAIProvider(api_key=key, base_url=url, model=m, show_thinking=show_thinking)
 
 
 __all__ = [
     'LLMProvider',
     'OpenAIProvider',
-    'AnthropicProvider',
     'create_provider',
 ]
